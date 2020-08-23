@@ -2,18 +2,20 @@
 apiVersion: batch/v1beta1
 kind: CronJob
 metadata:
-  name: whippet
+  name: "whippet"
 spec:
-  schedule: "*/1 * * * *"
+  schedule: "*/10 * * * *"
   jobTemplate:
     spec:
       template:
         spec:
           containers:
-            - name: hello
-              image: busybox
-              args:
-                - /bin/sh
-                - -c
-                - date; echo "Hello, World!"
-          restartPolicy: OnFailure
+            - name: "whippet"
+              image: "asia.gcr.io/nuzihr-286314/whippet:0.2.5"
+              env:
+                - name: R6STATS_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: r6stats
+                      key: token
+          restartPolicy: Never

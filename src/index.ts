@@ -1,56 +1,89 @@
 import async from 'async';
-
-// Imports the Google Cloud client library
-import { Firestore } from '@google-cloud/firestore';
-
-
-// 数分おきに実行
-// datastoreにアクセス
-// 更新対象のデータを特定
-// 10sおきに1人分ずつ
-// API呼び出し
-// ttu 60~120
-// Datastore更新
+import axios from "axios";
+import { DocumentData, Firestore } from '@google-cloud/firestore';
+import { Timestamp } from "@google-cloud/firestore/build/src";
 
 const firestore = new Firestore({ projectId: 'nuzihr-286314' });
-const document = firestore.collection('test').doc('documentpath');
+const document = firestore.collection('players');
+const instance = axios.create({
+    baseURL: 'https://api2.r6stats.com/public-api/stats',
+});
+const secret = process.env.R6STATS_TOKEN;
 
 async.waterfall([
-    // Enter new data into the document.
-    function(callback: () => void) {
-        document.set({
-            food: 'orange',
-            price: 200,
-        }).then(() => {
-            console.log('Entered new data into the document');
-            callback();
-        });
-    },
-    // Update an existing document.
-    function(callback: () => void) {
-        document.update({
-            drink: 'coffee',
-        }).then(() => {
-            console.log('Updated an existing document');
-            callback();
-        });
-    },
-    // Read the document.
-    function(callback: () => void) {
-        document.get().then((data) => {
-            console.log('Read the document');
-            console.log(data);
-            callback();
-        });
-    },
-    // Delete the document.
-    function(callback: () => void) {
-        document.delete()
-            .then(() => {
-                console.log('Deleted the document');
-                callback();
+
+    // 更新対象のプレイヤーを取得
+    function(callback: (x: any, arg: DocumentData[]) => void) {
+        const now = Timestamp.fromDate(new Date())
+        document.where("ttl", "<", now).get()
+            .then((querySnapshot) => {
+                console.log(`Found ${querySnapshot.size} players`);
+                callback(null, querySnapshot.docs);
+            })
+            .catch((err) => {
+                // @ts-ignore
+                callback(err);
             });
     },
+
+    // 10秒毎にプレイヤーのデータを更新
+    function(documentShanpshot: DocumentData[], callback: (x:any, result: string) => void) {
+        async.eachSeries(documentShanpshot, (documentData, done) => {
+            updatePlayer(documentData)
+                .then(() => setTimeout(done, 10000))
+                .catch((err) => {
+                    // @ts-ignore
+                    done(err);
+                });
+        }, (err) => {
+            if (err) {
+                // @ts-ignore
+                callback(err);
+            } else {
+                callback(null, "succeeded");
+            }
+        });
+    },
 ], function (err, result) {
-    // result now equals 'done'
+    if (err) console.log(err);
+    else console.log(result);
 });
+
+async function updatePlayer(documentData: DocumentData) {
+    // create ttl
+    const random = Math.floor( Math.random() * 60 ) + 1;
+    const date= new Date();
+    date.setMinutes(date.getMinutes()+60+random);
+    const ttl = Timestamp.fromDate(date);
+
+    const id = documentData.ref.id;
+    const { name } = documentData.data();
+    const generic = await instance.get(`/${name}/psn/generic`,{
+        headers: {
+            Authorization: `Bearer ${secret}`,
+        }
+    });
+    const seasonal = await instance.get(`/${name}/psn/seasonal`,{
+        headers: {
+            Authorization: `Bearer ${secret}`,
+        }
+    });
+    const operators = await instance.get(`/${name}/psn/operators`,{
+        headers: {
+            Authorization: `Bearer ${secret}`,
+        }
+    });
+    const weapons = await instance.get(`/${name}/psn/weapons`,{
+        headers: {
+            Authorization: `Bearer ${secret}`,
+        }
+    });
+    await document.doc(id).update({
+        name: name,
+        generic:generic.data.stats,
+        seasonal: seasonal.data.seasons,
+        operators: operators.data.operators,
+        weapons: weapons.data.weapons,
+        ttl: ttl,
+    });
+}
