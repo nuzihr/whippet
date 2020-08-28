@@ -4,7 +4,7 @@ import { DocumentData, Firestore } from '@google-cloud/firestore';
 import { Timestamp } from "@google-cloud/firestore/build/src";
 
 const firestore = new Firestore({ projectId: 'nuzihr-286314' });
-const document = firestore.collection('players');
+const collection = firestore.collection('players');
 const instance = axios.create({
     baseURL: 'https://api2.r6stats.com/public-api/stats',
 });
@@ -15,7 +15,7 @@ async.waterfall([
     // 更新対象のプレイヤーを取得
     function(callback: (x: any, arg: DocumentData[]) => void) {
         const now = Timestamp.fromDate(new Date())
-        document.where("ttl", "<", now).get()
+        collection.where("ttl", "<", now).get()
             .then((querySnapshot) => {
                 console.log(`Found ${querySnapshot.size} players`);
                 callback(null, querySnapshot.docs);
@@ -78,7 +78,7 @@ async function updatePlayer(documentData: DocumentData) {
             Authorization: `Bearer ${secret}`,
         }
     });
-    await document.doc(id).update({
+    await collection.doc(id).update({
         name: name,
         generic:generic.data.stats,
         seasonal: seasonal.data.seasons,
